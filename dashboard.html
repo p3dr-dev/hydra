@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hydra Crypto Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-running { background: #4CAF50; }
+        .status-stopped { background: #f44336; }
+        .status-error { background: #ff9800; }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .metric-card {
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .metric-title {
+            font-size: 1.1em;
+            margin-bottom: 10px;
+            color: #ddd;
+        }
+        
+        .metric-value {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .metric-change {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+        
+        .positive { color: #4CAF50; }
+        .negative { color: #f44336; }
+        .neutral { color: #ff9800; }
+        
+        .charts-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .chart-card {
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .chart-title {
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .alerts-container {
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .alert {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border-left: 4px solid;
+        }
+        
+        .alert-error {
+            background: rgba(244, 67, 54, 0.2);
+            border-left-color: #f44336;
+        }
+        
+        .alert-warning {
+            background: rgba(255, 152, 0, 0.2);
+            border-left-color: #ff9800;
+        }
+        
+        .alert-info {
+            background: rgba(33, 150, 243, 0.2);
+            border-left-color: #2196F3;
+        }
+        
+        .paths-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        
+        .paths-table th,
+        .paths-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .paths-table th {
+            background: rgba(255,255,255,0.1);
+            font-weight: bold;
+        }
+        
+        @media (max-width: 768px) {
+            .charts-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Hydra Crypto Dashboard</h1>
+            <p>Sistema de Trading Autônomo - Monitoramento em Tempo Real</p>
+        </div>
+        
+        <div class="status-bar">
+            <div class="status-indicator">
+                <div id="status-dot" class="status-dot status-running"></div>
+                <span id="status-text">Conectando...</span>
+            </div>
+            <div>
+                <span>Uptime: </span>
+                <span id="uptime">00:00:00</span>
+            </div>
+            <div>
+                <span>Última atualização: </span>
+                <span id="last-update">--</span>
+            </div>
+        </div>
+        
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-title">💰 Lucro Total</div>
+                <div id="total-profit" class="metric-value">0.000000</div>
+                <div id="profit-change" class="metric-change">+0.00%</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-title">📊 Taxa de Sucesso</div>
+                <div id="win-rate" class="metric-value">0.0%</div>
+                <div class="metric-change">Trades: <span id="total-trades">0</span></div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-title">📈 Lucro Médio</div>
+                <div id="avg-profit" class="metric-value">0.00%</div>
+                <div class="metric-change">por trade</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-title">🔄 Caminhos Ativos</div>
+                <div id="active-paths" class="metric-value">0</div>
+                <div class="metric-change">Oportunidades: <span id="opportunities">0</span></div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-title">⚡ Latência</div>
+                <div id="execution-time" class="metric-value">0.000s</div>
+                <div class="metric-change">tempo médio</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-title">📊 Volume Total</div>
+                <div id="total-volume" class="metric-value">0.000000</div>
+                <div class="metric-change">24h</div>
+            </div>
+        </div>
+        
+        <div class="charts-container">
+            <div class="chart-card">
+                <div class="chart-title">📈 Performance de Lucro</div>
+                <canvas id="profit-chart"></canvas>
+            </div>
+            
+            <div class="chart-card">
+                <div class="chart-title">🎯 Taxa de Sucesso</div>
+                <canvas id="winrate-chart"></canvas>
+            </div>
+        </div>
+        
+        <div class="alerts-container">
+            <h3>🚨 Alertas e Notificações</h3>
+            <div id="alerts-list">
+                <div class="alert alert-info">
+                    Dashboard conectado. Aguardando dados...
+                </div>
+            </div>
+        </div>
+        
+        <div class="chart-card">
+            <h3>🛤️ Performance dos Caminhos</h3>
+            <table class="paths-table">
+                <thead>
+                    <tr>
+                        <th>Caminho</th>
+                        <th>Lucro (%)</th>
+                        <th>Lucro (Valor)</th>
+                        <th>Passos</th>
+                        <th>Retorna ao Início?</th>
+                    </tr>
+                </thead>
+                <tbody id="paths-tbody">
+                    <tr>
+                        <td colspan="5" style="text-align: center;">Nenhum caminho executado ainda</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <script>
+        // Configuração do Socket.IO
+        const socket = io();
+        
+        // Dados para gráficos
+        let profitData = [];
+        let winrateData = [];
+        let profitChart, winrateChart;
+        
+        // Elementos DOM
+        const elements = {
+            statusDot: document.getElementById('status-dot'),
+            statusText: document.getElementById('status-text'),
+            uptime: document.getElementById('uptime'),
+            lastUpdate: document.getElementById('last-update'),
+            totalProfit: document.getElementById('total-profit'),
+            profitChange: document.getElementById('profit-change'),
+            winRate: document.getElementById('win-rate'),
+            totalTrades: document.getElementById('total-trades'),
+            avgProfit: document.getElementById('avg-profit'),
+            activePaths: document.getElementById('active-paths'),
+            opportunities: document.getElementById('opportunities'),
+            executionTime: document.getElementById('execution-time'),
+            totalVolume: document.getElementById('total-volume'),
+            alertsList: document.getElementById('alerts-list'),
+            pathsTbody: document.getElementById('paths-tbody')
+        };
+        
+        // Inicialização dos gráficos
+        function initCharts() {
+            const ctx1 = document.getElementById('profit-chart').getContext('2d');
+            const ctx2 = document.getElementById('winrate-chart').getContext('2d');
+            
+            profitChart = new Chart(ctx1, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Lucro Total',
+                        data: [],
+                        borderColor: '#4CAF50',
+                        backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#fff' }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        },
+                        y: {
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        }
+                    }
+                }
+            });
+            
+            winrateChart = new Chart(ctx2, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Sucessos', 'Falhas'],
+                    datasets: [{
+                        data: [0, 0],
+                        backgroundColor: ['#4CAF50', '#f44336']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#fff' }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Atualização de métricas
+        function updateMetrics(data) {
+            // Adiciona verificações para evitar erros com valores undefined ou null
+            elements.totalProfit.textContent = (data.total_profit !== undefined && data.total_profit !== null) ? parseFloat(data.total_profit || 0).toFixed(6) : 'N/A';
+            
+            // CORREÇÃO: Usar 'success_rate' que vem do backend
+            elements.winRate.textContent = (data.success_rate !== undefined && data.success_rate !== null) ? data.success_rate.toFixed(1) + '%' : 'N/A';
+            
+            elements.totalTrades.textContent = data.total_trades !== undefined ? data.total_trades : 'N/A';
+            
+            // CORREÇÃO: Usar 'avg_profit' que vem do backend
+            elements.avgProfit.textContent = (data.avg_profit !== undefined && data.avg_profit !== null) ? data.avg_profit.toFixed(6) : 'N/A';
+            
+            // CORREÇÃO: Usar 'active_tickers' que representa os pares ativos
+            elements.activePaths.textContent = data.active_tickers !== undefined ? data.active_tickers : 'N/A';
+
+            // 'opportunities' não é enviado diretamente, podemos usar o número de caminhos recentes
+            elements.opportunities.textContent = (data.recent_paths) ? data.recent_paths.length : 0;
+            
+            // 'execution_time' não está sendo calculado e enviado, deixaremos como N/A por enquanto
+            elements.executionTime.textContent = 'N/A';
+
+            // CORREÇÃO: O backend não envia 'total_volume', vamos usar a métrica 'market_volume'
+            elements.totalVolume.textContent = (data.market_volume !== undefined && data.market_volume !== null) ? parseFloat(data.market_volume || 0).toLocaleString() : 'N/A';
+            
+            // Atualiza gráficos
+            const timestamp = new Date().toLocaleTimeString(); // Usar a hora local da atualização
+            profitData.push({ x: timestamp, y: parseFloat(data.total_profit || 0) });
+            if (profitData.length > 20) profitData.shift();
+            
+            profitChart.data.labels = profitData.map(d => d.x);
+            profitChart.data.datasets[0].data = profitData.map(d => d.y);
+            profitChart.update();
+            
+            winrateChart.data.datasets[0].data = [
+                data.successful_trades || 0,
+                data.failed_trades || 0
+            ];
+            winrateChart.update();
+        }
+        
+        // Atualização de status
+        function updateStatus(data) {
+            elements.statusText.textContent = data.status === 'running' ? 'Executando' : 'Parado';
+            elements.statusDot.className = `status-dot status-${data.status}`;
+            elements.uptime.textContent = formatUptime(data.uptime);
+            elements.lastUpdate.textContent = new Date(data.last_update).toLocaleTimeString();
+        }
+        
+        // Atualização de dados de mercado
+        function updateMarketData(data) {
+            // Atualiza contador de tickers ativos
+            if (elements.activePaths) {
+                elements.activePaths.textContent = data.active_tickers || 0;
+            }
+            
+            // Atualiza lista de caminhos recentes
+            if (data.recent_paths && data.recent_paths.length > 0) {
+                updatePathsTable(data.recent_paths);
+            }
+            
+            // Adiciona alerta para novas oportunidades
+            if (data.recent_paths && data.recent_paths.length > 0) {
+                addAlert(`Encontradas ${data.recent_paths.length} novas oportunidades de trading`, 'success');
+            }
+            
+            // Atualiza timestamp da última atualização
+            if (data.last_update) {
+                elements.lastUpdate.textContent = new Date(data.last_update * 1000).toLocaleTimeString();
+            }
+        }
+        
+        // Atualização da tabela de caminhos
+        function updatePathsTable(paths) {
+            const tbody = elements.pathsTbody;
+            if (!tbody) return;
+            
+            // Limpa linhas antigas
+            tbody.innerHTML = '';
+            
+            // Adiciona novos caminhos
+            paths.slice(0, 5).forEach(path => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${path.path ? path.path.join(' → ') : 'N/A'}</td>
+                    <td>${path.profit_percent !== undefined ? path.profit_percent.toFixed(4) + '%' : 'N/A'}</td>
+                    <td>${path.final_amount !== undefined ? (path.final_amount - path.initial_investment).toFixed(6) : 'N/A'}</td>
+                    <td>${path.path ? path.path.length - 1 : 'N/A'}</td>
+                    <td>${path.returns_to_start ? 'Sim' : 'Não'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+        
+        // Formatação de uptime
+        function formatUptime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        // Adição de alertas
+        function addAlert(message, type = 'info') {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            
+            elements.alertsList.insertBefore(alertDiv, elements.alertsList.firstChild);
+            
+            // Remove alertas antigos
+            if (elements.alertsList.children.length > 10) {
+                elements.alertsList.removeChild(elements.alertsList.lastChild);
+            }
+        }
+        
+        // Eventos do Socket.IO
+        socket.on('connect', () => {
+            elements.statusText.textContent = 'Conectado';
+            addAlert('Dashboard conectado com sucesso', 'info');
+        });
+        
+        socket.on('disconnect', () => {
+            elements.statusText.textContent = 'Desconectado';
+            addAlert('Conexão perdida', 'warning');
+        });
+        
+        socket.on('full_update', (data) => {
+            // O evento unificado atualiza ambas as seções
+            updateMetrics(data);
+            updateMarketData(data);
+        });
+        
+        socket.on('status_update', (data) => {
+            updateStatus(data);
+        });
+        
+        socket.on('error', (data) => {
+            addAlert(data.message, 'error');
+        });
+        
+        socket.on('warning', (data) => {
+            addAlert(data.message, 'warning');
+        });
+        
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', () => {
+            initCharts();
+            
+            // Carrega dados iniciais
+            fetch('/api/metrics')
+                .then(response => response.json())
+                .then(data => {
+                    if (Object.keys(data).length > 0) {
+                        updateMetrics(data);
+                    }
+                });
+            
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    updateStatus(data);
+                });
+        });
+    </script>
+</body>
+</html>
+      updateStatus(data);
+                });
+        });
+    </script>
+</body>
+</html>
