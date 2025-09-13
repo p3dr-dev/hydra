@@ -11,13 +11,13 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent))
 
-from api_client import ApiClient
-from config import Config, ConfigError
-from dashboard import create_dashboard
-from data_analyzer import DataAnalyzer
-from order_executor import OrderExecutor
-from performance_monitor import PerformanceMonitor
-from risk_manager import RiskManager
+from src.hydra.api_client import ApiClient
+from src.hydra.config import Config, ConfigError
+from src.hydra.dashboard import create_dashboard, TradingMetrics
+from src.hydra.data_analyzer import DataAnalyzer
+from src.hydra.order_executor import OrderExecutor
+from src.hydra.performance_monitor import PerformanceMonitor
+from src.hydra.risk_manager import RiskManager
 
 # Configuração do logging
 logging.basicConfig(
@@ -255,7 +255,6 @@ class TradingBot:
                 avg_profit = self.trading_stats["total_profit"] / max(1, self.trading_stats["successful_trades"])
                 active_tickers_count = len(current_tickers)
 
-                from dashboard import TradingMetrics
                 new_metrics = TradingMetrics(
                     total_trades=self.trading_stats["total_trades"],
                     successful_trades=self.trading_stats["successful_trades"],
